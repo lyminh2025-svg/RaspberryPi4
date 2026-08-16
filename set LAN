@@ -1,0 +1,233 @@
+cấu hình mạng lan và tắt wifi raspberry pi 4
+
+Để thiết lập Raspberry Pi 4 sử dụng mạng dây (LAN) ổn định và tắt hoàn toàn Wi-Fi/Bluetooth, bạn thực hiện theo các bước chi tiết dưới đây.
+
+1. Cấu hình IP tĩnh cho mạng LAN
+Theo mặc định, khi cắm dây LAN (cổng Ethernet RJ45), Raspberry Pi 4 sẽ tự nhận IP qua DHCP. Nếu bạn muốn đặt IP tĩnh (Static IP) để dễ dàng SSH hoặc quản lý, thực hiện theo cách phù hợp với hệ điều hành đang dùng:
+
+Cách A: Dùng NetworkManager (Dành cho Raspberry Pi OS Bookworm mới nhất)
+Hệ điều hành phiên bản mới nhất quản lý mạng qua nmcli.
+
+Mở Terminal và tìm tên kết nối LAN:
+
+Bash
+nmcli connection show
+(Thường kết nối LAN sẽ có tên là Wired connection 1)
+
+Đặt IP tĩnh (Thay đổi các giá trị IP, Gateway, DNS theo dải mạng nhà bạn):
+
+Bash
+sudo nmcli connection modify "Wired connection 1" ipv4.addresses 192.168.1.100/24
+sudo nmcli connection modify "Wired connection 1" ipv4.gateway 192.168.1.1
+sudo nmcli connection modify "Wired connection 1" ipv4.dns "8.8.8.8,1.1.1.1"
+sudo nmcli connection modify "Wired connection 1" ipv4.method manual
+Khởi động lại kết nối:
+
+Bash
+sudo nmcli connection up "Wired connection 1"
+Cách B: Dùng dhcpcd.conf (Dành cho Raspberry Pi OS Bullseye trở về trước)
+Mở file cấu hình DHCP:
+
+Bash
+sudo nano /etc/dhcpcd.conf
+Thêm đoạn cấu hình sau vào cuối file:
+
+Plaintext
+interface eth0
+static ip_address=192.168.1.100/24
+static routers=192.168.1.1
+static domain_name_servers=8.8.8.8 1.1.1.1
+Lưu ý: Thay 192.168.1.100 bằng IP bạn mong muốn và 192.168.1.1 bằng IP của Router.
+
+Nhấn Ctrl + O -> Enter để lưu, sau đó Ctrl + X để thoát. Khởi động lại dịch vụ:
+
+Bash
+sudo service dhcpcd restart
+2. Tắt Wi-Fi (và Bluetooth) hoàn toàn
+Có hai cách để tắt Wi-Fi: tắt phần mềm tạm thời hoặc tắt từ mức Phần cứng (Firmware).
+
+Cách 1: Tắt từ phần cứng trong /boot/firmware/config.txt (Khuyên dùng)
+Cách này vô hiệu hóa module Wi-Fi ngay từ khi khởi động, giải phóng RAM và tiết kiệm điện.
+
+Chỉnh sửa file cấu hình hệ thống:
+
+Trên Raspberry Pi OS Bookworm:
+
+Bash
+sudo nano /boot/firmware/config.txt
+Trên các bản OS cũ hơn:
+
+Bash
+sudo nano /boot/config.txt
+Thêm các dòng sau vào cuối file:
+
+Plaintext
+# Tắt Wi-Fi
+dtoverlay=disable-wifi
+
+# Tắt Bluetooth (Tùy chọn, thêm nếu không dùng)
+dtoverlay=disable-bt
+Lưu file (Ctrl + O, Enter) và thoát (Ctrl + X).
+
+Khởi động lại Raspberry Pi để áp dụng:
+
+Bash
+sudo reboot
+Cách 2: Tắt nhanh bằng lệnh rfkill (Tắt phần mềm)
+Nếu bạn chỉ muốn tắt tạm thời mà không cần khởi động lại máy:
+
+Tắt Wi-Fi:
+
+Bash
+sudo rfkill block wifi
+Tắt Bluetooth (nếu cần):
+
+Bash
+sudo rfkill block bluetooth
+Kiểm tra lại trạng thái:
+
+Bash
+rfkill list
+(Nếu thấy Soft blocked: yes tức là đã tắt thành công)
+
+Bạn có muốn thực hiện thêm tùy chỉnh nào khác không?
+
+Cấu hình bật SSH để điều khiển từ xa không cần màn hình
+
+Đặt IP tĩnh trực tiếp từ Router (DHCP Reservation)
+NAME                UUID                                  TYPE      DEVICE
+
+Hao 2G              ed81e0ae-b38f-4d78-bfe4-6ad89c82d45a  wifi      wlan0
+
+Wired connection 1  5f42b5e3-6ee8-371f-9559-52e68d578e59  ethernet  eth0
+
+tailscale0          168d62c2-14a4-4c35-a7e2-0649057591e0  tun       tailscale0
+
+docker0             5babf9a0-a39c-4285-ae26-478760ff62b3  bridge    docker0
+
+lo                  74908244-8b66-4805-a91b-d7d1b3431160  loopback  lo
+
+preconfigured       930a3116-06d6-4e11-828b-f1cd0e2ddaf7  wifi      --
+
+pi@raspberrypilocal:~ $
+
+Dựa trên danh sách kết nối từ nmcli của bạn, kết nối LAN chính là Wired connection 1 (thiết bị eth0) và kết nối Wi-Fi đang hoạt động là Hao 2G (thiết bị wlan0).
+
+Dưới đây là các lệnh chính xác để cấu hình LAN và tắt hoàn toàn Wi-Fi cho Raspberry Pi của bạn:
+
+1. Cấu hình IP tĩnh cho mạng LAN (Wired connection 1)
+Giả sử bạn muốn đặt IP tĩnh cho Raspberry Pi là 192.168.1.100 (Router của bạn có IP 192.168.1.1).
+
+Chạy các lệnh sau:
+
+Bash
+# 1. Đặt địa chỉ IP tĩnh và Subnet mask (/24 tương đương 255.255.255.0)
+sudo nmcli connection modify "Wired connection 1" ipv4.addresses 192.168.1.100/24
+
+# 2. Đặt IP của Router (Gateway)
+sudo nmcli connection modify "Wired connection 1" ipv4.gateway 192.168.1.1
+
+# 3. Đặt máy chủ DNS (dùng DNS của Google và Cloudflare)
+sudo nmcli connection modify "Wired connection 1" ipv4.dns "8.8.8.8,1.1.1.1"
+
+# 4. Chuyển chế độ IP từ tự động (DHCP) sang thủ công (Manual)
+sudo nmcli connection modify "Wired connection 1" ipv4.method manual
+
+# 5. Khởi động lại kết nối để áp dụng thay đổi
+sudo nmcli connection up "Wired connection 1"
+Lưu ý: Nếu dải IP nhà bạn là 192.168.0.x hoặc 10.0.0.x, hãy thay đổi 192.168.1.100 và 192.168.1.1 tương ứng với dải mạng của Router nhà bạn.
+
+2. Tắt và Ngắt kết nối Wi-Fi
+Bạn có thể chọn 1 trong 2 cách bên dưới:
+
+Cách A: Tắt bằng NetworkManager (Nhanh nhất)
+Lệnh này sẽ xoá cấu hình Wi-Fi "Hao 2G" và tắt card Wi-Fi ngay lập tức:
+
+Bash
+# Xoá profle Wi-Fi "Hao 2G"
+sudo nmcli connection delete "Hao 2G"
+
+# Xoá profile Wi-Fi cấu hình sẵn "preconfigured" (nếu có)
+sudo nmcli connection delete "preconfigured"
+
+# Tắt tính năng Wi-Fi trong NetworkManager
+sudo nmcli radio wifi off
+Cách B: Tắt hoàn toàn Wi-Fi ở cấp độ Phần cứng (Khuyên dùng)
+Cách này giúp vô hiệu hóa module Wi-Fi ngay từ khi khởi động máy, tiết kiệm điện năng và giải phóng tài nguyên CPU/RAM.
+
+Mở file cấu hình khởi động:
+
+Bash
+sudo nano /boot/firmware/config.txt
+(Nếu dùng OS phiên bản cũ báo không tìm thấy file, hãy thử sudo nano /boot/config.txt)
+
+Thêm dòng sau vào cuối file:
+
+Plaintext
+dtoverlay=disable-wifi
+(Nếu muốn tắt luôn Bluetooth, thêm tiếp dòng: dtoverlay=disable-bt)
+
+Nhấn Ctrl + O -> ấn Enter để lưu, sau đó nhấn Ctrl + X để thoát.
+
+Khởi động lại Raspberry Pi:
+
+Bash
+sudo reboot
+3. Kiểm tra lại kết quả
+Sau khi máy khởi động lại hoặc áp dụng lệnh, chạy lại lệnh:
+
+Bash
+nmcli connection show
+Kết nối Wi-Fi (Hao 2G) sẽ không còn xuất hiện và thiết bị wlan0 sẽ ở trạng thái ngắt hẳn.
+
+kiểm tra tốc độ mạng
+
+Để kiểm tra tốc độ mạng LAN trên Raspberry Pi (bao gồm tốc độ Internet và tốc độ truyền tải nội bộ), bạn có thể chọn một trong hai cách dưới đây:
+
+Cách 1: Kiểm tra tốc độ Internet (Băng thông ra ngoài)
+Sử dụng công cụ speedtest-cli để đo tốc độ Upload/Download thực tế của đường truyền Internet.
+
+1
+Cài đặt Speedtest CLI
+Sử dụng trình quản lý gói apt
+Mở Terminal và cài đặt gói speedtest-cli:
+
+Bash
+sudo apt update
+sudo apt install speedtest-cli -y
+2
+Chạy đo tốc độ mạng
+Thực hiện lệnh kiểm tra:
+
+Bash
+speedtest-cli
+Mẹo: Nếu muốn chia sẻ kết quả dưới dạng hình ảnh, hãy dùng lệnh:
+
+Bash
+speedtest-cli --share
+Cách 2: Kiểm tra tốc độ cổng LAN nội bộ (Physical Link Speed)
+Nếu bạn muốn kiểm tra xem cổng Ethernet (eth0) trên Raspberry Pi 4 đã nhận đủ băng thông 1 Gbps (1000 Mbps) hay chưa:
+
+Chạy lệnh sau:
+
+Bash
+sudo ethtool eth0 | grep -i speed
+Kết quả mong đợi:
+
+Speed: 1000Mb/s -> Cổng LAN đang chạy đúng tốc độ tối đa (1 Gbps).
+
+Speed: 100Mb/s -> Dây cáp LAN hoặc cổng Switch/Router đang giới hạn ở mức 100 Mbps (hãy kiểm tra lại dây cáp CAT5e/CAT6).
+
+Cách 3: Đo tốc độ mạng LAN giữa Pi và máy tính khác (Nội bộ)
+Nếu bạn muốn đo tốc độ truyền dữ liệu thực tế giữa Raspberry Pi và một máy tính/thiết bị khác trong cùng mạng LAN, hãy dùng công cụ iperf3:
+
+Trên Raspberry Pi (Đóng vai trò Server):
+
+Bash
+sudo apt install iperf3 -y
+iperf3 -s
+Trên máy tính khác (Đóng vai trò Client - ví dụ PC/Laptop trong mạng):
+Cài đặt iperf3 và chạy lệnh (thay 192.168.1.100 bằng IP tĩnh của Pi):
+
+Bash
+iperf3 -c 192.168.1.100
