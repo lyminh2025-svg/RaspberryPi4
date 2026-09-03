@@ -1,3 +1,6 @@
+ Ras_Modeth_Wave v6
+##############################################################
+
 bây giờ tôi có folder dự án viết bằng go. tôi mới cài đặt raspbery chưa cài đặt phần mềm gì khác tôi muốn biên dịch phần mềm thành binary chạy trên docker raspberry ip 192.168.1.125 port 6060. hãy hướng dẫn tôi thự hiện từng bước. bạn có cần thêm thông tin nào nữa khôn
 
 Tôi đã có đủ thông tin cơ bản về IP (192.168.1.125) và Port (6060). Tuy nhiên, để đảm bảo quá trình biên dịch chính xác tuyệt đối, tôi chỉ cần bạn lưu ý 1 điều:
