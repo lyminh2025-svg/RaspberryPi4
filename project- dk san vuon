@@ -1,0 +1,372 @@
+bây giờ tôi có folder dự án viết bằng go. tôi mới cài đặt raspbery chưa cài đặt phần mềm gì khác tôi muốn biên dịch phần mềm thành binary chạy trên docker raspberry ip 192.168.1.125 port 6060. hãy hướng dẫn tôi thự hiện từng bước. bạn có cần thêm thông tin nào nữa khôn
+
+Tôi đã có đủ thông tin cơ bản về IP (192.168.1.125) và Port (6060). Tuy nhiên, để đảm bảo quá trình biên dịch chính xác tuyệt đối, tôi chỉ cần bạn lưu ý 1 điều:
+
+Lưu ý về kiến trúc chip (Architecture): Raspberry Pi thường chạy chip ARM (ARMv7 32-bit hoặc ARM64 64-bit), trong khi máy tính lập trình của bạn thường là chip x86_64 (Intel/AMD). Nhờ có Docker Multi-stage Build, Docker trên Raspberry Pi sẽ tự biên dịch đúng kiến trúc chip của Pi mà bạn không cần cấu hình chéo (Cross-compile) thủ công.
+
+Dưới đây là hướng dẫn từng bước chi tiết từ máy tính của bạn đến Raspberry Pi:
+
+1
+Tạo Dockerfile trong thư mục dự án Go
+Thực hiện trên máy tính của bạn
+Mở thư mục chứa dự án Go trên máy tính và tạo một tệp đặt tên chính xác là Dockerfile (không có đuôi file) với nội dung sau:
+
+Dockerfile
+# STAGE 1: Biên dịch mã nguồn Go
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+
+# Copy các tệp quản lý thư viện trước để tối ưu cache
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy toàn bộ mã nguồn vào container
+COPY . .
+
+# Biên dịch ra file binary tĩnh tên là 'app'
+RUN CGO_ENABLED=0 go build -o app .
+
+# STAGE 2: Tạo Image siêu nhẹ để chạy
+FROM alpine:latest
+
+# Cài đặt chứng chỉ CA nếu app có gọi HTTPS
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+
+# Copy duy nhất file binary từ Stage 1 sang
+COPY --from=builder /app/app .
+
+# Mở port 6060
+EXPOSE 6060
+
+# Lệnh chạy ứng dụng
+CMD ["./app"]
+2
+Cài đặt Docker trên Raspberry Pi
+Thực hiện trên Raspberry Pi
+Truy cập vào Raspberry Pi qua SSH (sử dụng Terminal hoặc PuTTY):
+
+Bash
+ssh pi@192.168.1.125
+Sau khi đăng nhập thành công, chạy lệnh cài đặt tự động của Docker:
+
+Bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+Thêm người dùng hiện tại vào group docker để không cần gõ sudo mỗi khi dùng lệnh:
+
+Bash
+sudo usermod -aG docker $USER
+(Sau lệnh này, hãy gõ exit để thoát SSH rồi đăng nhập lại để quyền mới có hiệu lực).
+
+3
+Sao chép dự án sang Raspberry Pi
+Thực hiện từ máy tính của bạn
+Mở Terminal trên máy tính (tại thư mục nằm ngoài thư mục dự án) và dùng lệnh scp để copy toàn bộ thư mục dự án sang Raspberry Pi:
+
+Bash
+scp -r ./my-go-project pi@192.168.1.125:/home/pi/
+(Thay my-go-project thành tên thư mục dự án thực tế của bạn).
+
+4
+Biên dịch (Build) Docker Image trên Raspberry Pi
+Thực hiện trên Raspberry Pi
+Mở SSH vào Raspberry Pi, di chuyển vào thư mục dự án vừa copy sang và tiến hành build Image:
+
+Bash
+cd /home/pi/my-go-project
+docker build -t my-go-app .
+Quá trình này sẽ tải Go về Pi, tự động biên dịch code ra binary tương thích với chip ARM của Pi và đóng gói thành Image tên là my-go-app.
+
+5
+Khởi chạy Container
+Thực hiện trên Raspberry Pi
+Chạy lệnh sau để bật ứng dụng với port 6060, đồng thời cấu hình để app tự khởi động lại cùng Pi nếu bị cúp điện hay reboot:
+
+Bash
+docker run -d \
+  -p 6060:6060 \
+  --restart always \
+  --name running-go-app \
+  my-go-app
+Kiểm tra kết quả
+Sau khi hoàn thành, bạn có thể kiểm tra xem container có đang chạy không bằng lệnh:
+
+Bash
+docker ps
+Bây giờ bạn đã có thể truy cập vào ứng dụng Go từ bất kỳ thiết bị nào cùng mạng qua địa chỉ:
+[http://192.168.1.125:6060](http://192.168.1.125:6060)
+
+kiểm tra kiến trúc chip Raspberry
+
+Để kiểm tra chính xác kiến trúc chip (CPU Architecture) mà Raspberry Pi của bạn đang sử dụng, bạn hãy mở Terminal qua SSH trên Pi và sử dụng các lệnh dưới đây:
+
+Các lệnh kiểm tra kiến trúc chip trên Raspberry Pi
+Lệnh 1: Kiểm tra tổng quan (Nhanh & chính xác nhất)
+Bash
+uname -m
+Lệnh này sẽ trả về ngay kết quả kiến trúc hệ điều hành:
+
+aarch64 hoặc arm64: Hệ điều hành 64-bit (Raspberry Pi 3, 4, 5, Zero 2 W).
+
+armv7l: Hệ điều hành 32-bit (Raspberry Pi 2, 3, 4...).
+
+armv6l: Hệ điều hành 32-bit đời cũ (Raspberry Pi 1, Zero/Zero W).
+
+Lệnh 2: Kiểm tra chi tiết thông số CPU
+Bash
+lscpu
+Lệnh này hiển thị đầy đủ thông tin phần cứng. Bạn hãy chú ý 2 dòng:
+
+Architecture: Cho biết kiến trúc chip đang chạy (ví dụ: aarch64).
+
+CPU op-mode(s): Cho biết chip hỗ trợ chế độ nào (ví dụ: 32-bit, 64-bit).
+
+Lệnh 3: Xem model phần cứng Raspberry Pi
+Bash
+cat /sys/firmware/devicetree/base/model
+Lệnh này trả về chính xác tên thiết bị của bạn (Ví dụ: Raspberry Pi 4 Model B Rev 1.4).
+
+Ý nghĩa đối với việc Build Docker Go
+Khác với PC dùng chip x86_64, Raspberry Pi sử dụng chip kiến trúc ARM.
+
+Khi bạn chạy lệnh docker build trực tiếp trên Raspberry Pi (như hướng dẫn ở bước trước), Docker sẽ tự động phát hiện kiến trúc chip này (dù là armv7 hay arm64) để biên dịch ứng dụng Go ra file binary tương thích 100%.
+
+pi@raspberrypi:~ $ uname -m
+
+aarch64
+
+Kết quả aarch64 xác nhận Raspberry Pi của bạn đang chạy hệ điều hành 64-bit (ARM64 / ARMv8). Đây là kiến trúc tối tân và tối ưu nhất hiện nay cho Raspberry Pi (phổ biến trên Pi 3, Pi 4, Pi 5 và Pi Zero 2 W).
+
+Tác động của kết quả aarch64 đến quy trình Docker Go
+Khi biên dịch trực tiếp trên Raspberry Pi:
+
+Bạn không cần chỉnh sửa bất kỳ dòng nào trong file Dockerfile đã chuẩn bị.
+
+Lệnh docker build -t my-go-app . chạy trên Pi sẽ tự động biên dịch code Go sang kiến trúc linux/arm64.
+
+Nếu muốn biên dịch sẵn trên Máy tính (PC/Mac) rồi gửi file sang Pi (Cross-compile):
+
+Nếu sau này bạn không muốn build trên Pi (để tiết kiệm RAM/CPU của Pi), bạn chỉ cần đặt biến môi trường biên dịch trên máy tính của mình như sau:
+
+GOOS=linux
+
+GOARCH=arm64
+
+Ví dụ lệnh build trực tiếp trên PC ra file binary 64-bit cho Pi:
+
+Bash
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o app .
+Bây giờ bạn hoàn toàn có thể tiếp tục Bước 4 & Bước 5 (chạy docker build và docker run) trên Raspberry Pi một cách mượt mà!
+
+tất cả các thao tác này thực hiện trên pi đúng không
+
+Đúng rồi bạn nhé! Bạn hoàn toàn có thể thực hiện 100% tất cả các thao tác trực tiếp trên Raspberry Pi mà không cần phải thực hiện qua lại giữa PC và Pi nữa.
+
+Vì Pi đã có sẵn kết nối Internet và mạng nội bộ, việc làm mọi thứ trên Pi giúp quy trình cực kỳ đơn giản.
+
+Tóm tắt quy trình làm 100% trên Pi
+Bạn chỉ cần kết nối SSH vào Pi (IP 192.168.1.125) và gõ lệnh theo đúng thứ tự này:
+
+Cài đặt Docker (nếu chưa cài):
+
+Bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+(Thoát SSH gõ exit rồi đăng nhập lại để cập nhật quyền).
+
+Tải code từ máy tính/Git về Pi (hoặc dùng lệnh scp copy folder sang).
+
+Di chuyển vào thư mục code và tạo file Dockerfile ngay trên Pi:
+
+Bash
+cd /đường-dẫn-đến-folder-go
+nano Dockerfile
+(Dán nội dung Dockerfile vào, nhấn Ctrl + O để lưu và Ctrl + X để thoát).
+
+Biên dịch (Build) Docker Image:
+
+Bash
+docker build -t my-go-app .
+(Docker trên Pi sẽ tự tải Go về, biên dịch code chuẩn aarch64 và đóng gói lại).
+
+Chạy Docker Container với Port 6060:
+
+Bash
+docker run -d \
+  -p 6060:6060 \
+  --restart always \
+  --name running-go-app \
+  my-go-app
+Lý do làm cách này rất tiện
+Không lo lệch kiến trúc: Do code được biên dịch ngay trên môi trường aarch64 của Pi, file binary tạo ra đảm bảo chạy tương thích 100%.
+
+Quản lý gọn gàng: Tất cả file build, container và service đều nằm gọn trong Pi, chỉ cần gõ lệnh là xong.
+
+Bạn cứ tiến hành thực hiện trực tiếp trên Pi, nếu gặp bước nào bị lỗi gõ lệnh cứ gửi lên đây mình hỗ trợ ngay nhé!
+
+sau khi thực hiện xong tôi có thể xoá folder code chứ
+
+Xóa được, nhưng bạn chỉ nên xóa mã nguồn gốc khỏi Raspberry Pi khi đã sao lưu nó lên một nơi an toàn (như GitHub).
+
+Dưới đây là chi tiết điều gì sẽ xảy ra sau khi bạn xóa folder code trên Pi:
+
+1. Ứng dụng Docker có tiếp tục chạy không?
+CÓ, ứng dụng vẫn chạy hoàn toàn bình thường.
+
+Sau khi gõ lệnh docker build, Docker đã biên dịch mã nguồn thành file binary tĩnh và đóng gói trọn gói vào bên trong Docker Image (my-go-app).
+
+Docker Container hoạt động hoàn toàn độc lập với folder code ngoài máy. Do đó, việc xóa folder mã nguồn gốc không hề ảnh hưởng đến ứng dụng đang chạy.
+
+2. Tác hại nếu bạn KHÔNG sao lưu code gốc ở đâu cả
+Nếu bạn xóa folder code trên Pi mà chưa đẩy (push) code lên GitHub / GitLab hay lưu lại trên máy tính:
+
+Không thể sửa lỗi hay cập nhật: Khi muốn sửa 1 dòng code hoặc thêm tính năng mới, bạn sẽ không còn mã nguồn để sửa.
+
+Không thể khôi phục từ Docker Image: Mặc dù Docker Image còn giữ file binary, nhưng bạn không thể chuyển ngược file binary đó về lại mã nguồn Go ban đầu.
+
+💡 Quy trình chuẩn khuyên dùng
+Lưu trữ mã nguồn an toàn: Đẩy folder code lên GitHub (chế độ Private) hoặc lưu giữ 1 bản sao trên máy tính cá nhân của bạn.
+
+Xóa folder code trên Raspberry Pi: Lúc này bạn có thể thoải mái xóa folder code trên Pi để giải phóng dung lượng thẻ nhớ bằng lệnh:
+
+Bash
+rm -rf /đường-dẫn-đến-folder-go
+Khi cần cập nhật code trong tương lai: Bạn chỉ cần sửa code trên máy tính → Đẩy lên GitHub → Sang Pi dùng git pull kéo code về lại → Chạy lệnh docker build lại là xong.
+
+pi@raspberrypi:~/Ras_Modeth_Wave $ docker build -t ras-modeth-wave
+
+ERROR: docker: 'docker buildx build' requires 1 argument
+
+
+
+Usage:  docker buildx build [OPTIONS] PATH | URL | -
+
+
+
+Run 'docker buildx build --help' for more information
+
+Lỗi này xảy ra vì bạn thiếu dấu chấm (.) ở cuối lệnh.
+
+Dấu chấm này rất quan trọng: nó báo cho Docker biết vị trí của file Dockerfile và mã nguồn đang nằm ngay tại thư mục hiện tại (~/Ras_Modeth_Wave).
+
+Cách khắc phục
+Bạn chỉ cần thêm khoảng trắng và dấu chấm vào cuối lệnh như sau:
+
+Bash
+docker build -t ras-modeth-wave .
+(Lưu ý: Có khoảng trắng giữa ras-modeth-wave và dấu .).
+
+Cấu trúc lệnh đúng:
+docker build: Lệnh khởi chạy quá trình đóng gói.
+
+-t ras-modeth-wave: Đặt tên (tag) cho Image là ras-modeth-wave.
+
+.: Chỉ định thư mục hiện tại chứa Dockerfile.
+
+Sau khi thêm dấu chấm, Docker sẽ bắt đầu quá trình tải Go, biên dịch code và tạo Image cho bạn!
+
+pi@raspberrypi:~/Ras_Modeth_Wave $ docker run -d \
+
+> -p 6060:6060 \
+
+> --restart always \
+
+> --name running-go-app \
+
+> ras-modeth-wave
+
+docker: Error response from daemon: Conflict. The container name "/running-go-app" is already in use by container "25f9b6691b12845aa70c1a48d7a849abbd39d00086d1e0846083cf6dee8289a1". You have to remove (or rename) that container to be able to reuse that name.
+
+
+
+Run 'docker run --help' for more information
+
+pi@raspberrypi:~/Ras_Modeth_Wave $ docker ps
+
+CONTAINER ID   IMAGE          COMMAND   CREATED         STATUS         PORTS                                         NAMES
+
+25f9b6691b12   41b207474f59   "./app"   9 minutes ago   Up 9 minutes   0.0.0.0:6060->6060/tcp, [::]:6060->6060/tcp   running-go-app
+
+Lỗi này báo rằng tên container running-go-app đã tồn tại và đang chạy sẵn trên Pi từ 9 phút trước (chính là container ID 25f9b6691b12 mà lệnh docker ps hiển thị).
+
+Do bạn đặt tham số --restart always, container cũ vẫn đang chạy và đang chiếm giữ port 6060.
+
+Chọn 1 trong 2 giải pháp xử lý bên dưới
+Cách 1: Thay thế container cũ bằng bản build mới (Nên dùng khi bạn vừa sửa code)
+Để dừng, xóa container cũ và khởi chạy bản ras-modeth-wave mới build:
+
+Bash
+# 1. Dừng container cũ đang chạy
+docker stop running-go-app
+
+# 2. Xóa container cũ
+docker rm running-go-app
+
+# 3. Chạy lại container mới
+docker run -d \
+  -p 6060:6060 \
+  --restart always \
+  --name running-go-app \
+  ras-modeth-wave
+Cách 2: Đổi tên container mới (Nếu muốn chạy song song bản mới ở port khác)
+Nếu bạn muốn giữ container cũ và chỉ muốn chạy thử bản mới, bạn phải đổi tên container và port phía ngoài:
+
+Bash
+docker run -d \
+  -p 6061:6060 \
+  --restart always \
+  --name running-go-app-v2 \
+  ras-modeth-wave
+Kiểm tra kết quả & xem log
+Sau khi chạy xong Cách 1, bạn có thể kiểm tra xem ứng dụng mới đã chạy chuẩn chưa bằng lệnh:
+
+Bash
+# Xem ứng dụng có báo lỗi gì khi chạy không
+docker logs -f running-go-app
+(Nhấn Ctrl + C để thoát màn hình xem log).
+
+Bây giờ ứng dụng của bạn đã được cập nhật thành công trên [http://192.168.1.125:6060](http://192.168.1.125:6060)!
+
+Dựa trên tệp cấu hình (thường là file .env) mà bạn cung cấp, ứng dụng Go của bạn đang thực hiện các chức năng chính sau:
+
+Kết nối Modbus TCP: Ứng dụng đọc/ghi dữ liệu Modbus qua mạng Ethernet tới thiết bị Relay tại địa chỉ IP 192.168.1.200, cổng 502, với ID thiết bị (Slave ID) là 1.
+
+Giao diện Web / API: Mở một HTTP Server chạy ở cổng :6060 (đúng với port bạn đã mở trên Docker).
+
+Xác thực bảo mật (Basic Auth): Đăng nhập ứng dụng bằng tài khoản admin và mật khẩu 1234$6.
+
+Thời gian đáp ứng:
+
+POLL_INTERVAL=1s: Tần suất quét/đọc dữ liệu Modbus là 1 giây một lần.
+
+MODBUS_TIMEOUT=2s: Thời gian chờ tối đa khi gửi lệnh Modbus là 2 giây (quá thời gian này sẽ báo lỗi mất kết nối).
+
+RELAY_SETTLE=100ms: Thời gian chờ 100 mili-giây để rơ-le ổn định trạng thái sau khi đóng/ngắt.
+
+Lưu ý quan trọng khi chạy file này trên Docker
+Nếu bạn sử dụng tệp biến môi trường này (file .env) trong thư mục dự án Go:
+
+Đảm bảo tệp .env đã được copy vào Docker Container:
+
+Trong file Dockerfile, dòng COPY . . đã chép file .env vào container.
+
+Hoặc nếu bạn muốn truyền cấu hình này trực tiếp khi chạy Docker mà không cần lưu cứng vào Image, bạn có thể chạy lệnh:
+
+Bash
+docker run -d \
+  -p 6060:6060 \
+  --env-file .env \
+  --restart always \
+  --name running-go-app \
+  ras-modeth-wave
+Kết nối mạng tới Rơ-le (192.168.1.200):
+
+Vì Docker container sử dụng chế độ mạng mặc định (Bridge), nó sẽ gọi ra IP 192.168.1.200 thông qua card mạng của Raspberry Pi.
+
+Hãy đảm bảo Raspberry Pi (192.168.1.125) và Rơ-le (192.168.1.200) có thể ping thấy nhau trong cùng mạng nội bộ.
+
+Bạn có muốn thử kiểm tra kết nối từ Pi tới thiết bị Relay không?
