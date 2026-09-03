@@ -369,4 +369,422 @@ Vì Docker container sử dụng chế độ mạng mặc định (Bridge), nó 
 
 Hãy đảm bảo Raspberry Pi (192.168.1.125) và Rơ-le (192.168.1.200) có thể ping thấy nhau trong cùng mạng nội bộ.
 
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+tính năng hẹn giờ tự động không hoạt động
+
+Có 2 nguyên nhân phổ biến nhất khiến tính năng hẹn giờ tự động (schedules) không hoạt động khi chạy trên Docker:
+
+Nguyên nhân 1: Múi giờ (Timezone) của Docker Container bị lệch
+Mặc định, các Docker container chạy hệ điều hành Alpine/Linux sẽ dùng múi giờ UTC (GMT+0).
+
+Hiện tượng: Nếu bạn hẹn giờ 08:00 (theo giờ Việt Nam UTC+7), nhưng container lại hiểu là 08:00 UTC (tức 15:00 giờ Việt Nam), dẫn đến lịch chạy bị sai hoặc lệch 7 tiếng.
+
+Cách khắc phục: Truyền biến môi trường múi giờ TZ=Asia/Ho_Chi_Minh vào Docker khi khởi chạy.
+
+Nguyên nhân 2: Ứng dụng không tìm thấy/không đọc được file schedules.json
+Hiện tượng: Ứng dụng Go khi khởi chạy sẽ tìm file schedules.json ở thư mục làm việc (Working Directory). Nếu file nằm sai vị trí hoặc container không có quyền đọc/ghi, lịch trình lưu qua Web sẽ bị rỗng hoặc không lưu lại được.  
+JSON
+
+Các bước xử lý triệt để
+Bước 1: Kiểm tra log của ứng dụng để xem báo lỗi
+Chạy lệnh xem log trên Pi để biết chính xác code Go có báo lỗi đọc file hay lỗi lịch trình không:
+
+Bash
+docker logs --tail 100 running-go-app
+Bước 2: Khởi chạy lại Container với đầy đủ tham số Múi giờ & Mount file
+Xóa container cũ và chạy lại lệnh với cấu hình chuẩn sau:
+
+Bash
+# 1. Dừng và xóa container cũ
+docker stop running-go-app
+docker rm running-go-app
+
+# 2. Chạy lại container kèm múi giờ Việt Nam và Mount file schedules.json
+docker run -d \
+  -p 6060:6060 \
+  -e TZ=Asia/Ho_Chi_Minh \
+  --env-file .env \
+  -v $(pwd)/schedules.json:/root/schedules.json \
+  --restart always \
+  --name running-go-app \
+  ras-modeth-wave
+(Lưu ý: Nếu trong Dockerfile của bạn WORKDIR là /root/ thì dùng /root/schedules.json. Nếu WORKDIR là /app/ thì sửa thành /app/schedules.json).
+
+Bước 3: Kiểm tra múi giờ bên trong Container
+Bạn có thể gõ lệnh sau để kiểm tra xem giờ trong container đã khớp với giờ Raspberry Pi chưa:
+
+Bash
+docker exec -it running-go-app date
+Nếu màn hình hiển thị đúng múi giờ ICT (Indochina Time) và giờ hiện tại, tính năng hẹn giờ sẽ hoạt động chính xác!
+
+pi@raspberrypi:~ $ docker logs --tail 100 running-go-app
+
+2026/09/03 07:55:27.046514 Starting industrial control server
+
+2026/09/03 07:55:27.046658 HTTP=:6060 | Modbus=192.168.1.200:502 | UnitID=1 | Poll=1s | ScheduleFile=schedules.json
+
+2026/09/03 07:55:27.048107 Modbus connected: 192.168.1.200:502, UnitID=1
+
+2026/09/03 07:55:27.048574 HTTP server listening on :6060
+
+2026/09/03 07:55:27.199463 Scheduler: channel=0 (Đèn Cổng Trước) -> false
+
+2026/09/03 07:55:27.343431 Scheduler: channel=1 (Chiếu sáng KV1) -> false
+
+2026/09/03 07:55:27.487406 Scheduler: channel=2 (Chiếu sáng KV2 ) -> false
+
+2026/09/03 07:55:27.631379 Scheduler: channel=3 (Chiếu sáng KV3) -> false
+
+2026/09/03 07:55:27.775375 Scheduler: channel=4 (Bơm Phun Sương) -> false
+
+2026/09/03 07:55:27.919356 Scheduler: channel=5 (Bơm Tưới KV1) -> false
+
+2026/09/03 07:55:28.063377 Scheduler: channel=6 (Bơm Tưới KV2) -> false
+
+2026/09/03 07:55:28.207463 Scheduler: channel=7 (Bơm Tưới KV3) -> false
+
+2026/09/03 07:58:46.773125 Nhận signal terminated, bắt đầu shutdown...
+
+2026/09/03 07:58:46.773937 Đóng kết nối Modbus
+
+2026/09/03 07:58:46.774035 Server stopped
+
+2026/09/03 07:59:09.557731 Starting industrial control server
+
+2026/09/03 07:59:09.563409 HTTP=:6060 | Modbus=192.168.1.200:502 | UnitID=1 | Poll=1s | ScheduleFile=schedules.json
+
+2026/09/03 07:59:09.568562 Modbus connected: 192.168.1.200:502, UnitID=1
+
+2026/09/03 07:59:09.569092 HTTP server listening on :6060
+
+2026/09/03 07:59:09.683631 Scheduler: channel=0 (Đèn Cổng Trước) -> false
+
+2026/09/03 07:59:09.821735 Scheduler: channel=1 (Chiếu sáng KV1) -> false
+
+2026/09/03 07:59:09.982661 Scheduler: channel=2 (Chiếu sáng KV2 ) -> false
+
+2026/09/03 07:59:10.120658 Scheduler: channel=3 (Chiếu sáng KV3) -> false
+
+2026/09/03 07:59:10.258673 Scheduler: channel=4 (Bơm Phun Sương) -> false
+
+2026/09/03 07:59:10.396752 Scheduler: channel=5 (Bơm Tưới KV1) -> false
+
+2026/09/03 07:59:10.534691 Scheduler: channel=6 (Bơm Tưới KV2) -> false
+
+2026/09/03 07:59:10.672653 Scheduler: channel=7 (Bơm Tưới KV3) -> false
+
+Nhìn vào log của ứng dụng, tôi thấy ngay nguyên nhân cốt lõi khiến tính năng hẹn giờ bị lệch/không chạy:
+
+Dòng log đầu tiên ghi lại mốc thời gian: 2026/09/03 07:55:27. Múi giờ trong container hiện tại đang chạy theo giờ quốc tế UTC (+0).
+
+Bây giờ ở Việt Nam là khoảng 15:00 (UTC+7), nhưng container lại nghĩ hiện tại mới là 07:00 sáng. Do bị lệch mất 7 tiếng, tất cả các lệnh hẹn giờ của bạn sẽ bị chạy trễ 7 tiếng so với thực tế!
+
+Cách khắc phục triệt để
+Lỗi này xử lý rất đơn giản bằng cách truyền biến môi trường múi giờ TZ=Asia/Ho_Chi_Minh khi chạy container.
+
+Bạn chỉ cần thực hiện 3 lệnh này trên Terminal của Raspberry Pi:
+
+1. Dừng container hiện tại:
+
+Bash
+docker stop running-go-app
+2. Xóa container cũ:
+
+Bash
+docker rm running-go-app
+3. Chạy lại container với cấu hình múi giờ chuẩn Việt Nam:
+
+Bash
+docker run -d \
+  -p 6060:6060 \
+  -e TZ=Asia/Ho_Chi_Minh \
+  --env-file .env \
+  -v $(pwd)/schedules.json:/schedules.json \
+  --restart always \
+  --name running-go-app \
+  ras-modeth-wave
+Kiểm tra lại kết quả
+Sau khi chạy xong lệnh trên, bạn gõ lệnh xem log:
+
+Bash
+docker logs --tail 20 running-go-app
+Nếu mốc thời gian hiển thị trong log chuyển thành 15:xx:xx (trùng khớp với giờ hiện tại trên điện thoại/máy tính của bạn), hệ thống Scheduler đã sẵn sàng và sẽ kích hoạt Bật/Tắt rơ-le chuẩn xác theo lịch trình!
+
+pi@raspberrypi:~/Ras_Modeth_Wave $ docker logs --tail 20 running-go-app
+
+2026/09/03 08:21:45.539551 Starting industrial control server
+
+2026/09/03 08:21:45.539818 HTTP=:6060 | Modbus=192.168.1.200:502 | UnitID=1 | Poll=1s | ScheduleFile=schedules.json
+
+2026/09/03 08:21:45.541652 Modbus connected: 192.168.1.200:502, UnitID=1
+
+2026/09/03 08:21:45.542269 HTTP server listening on :6060
+
+2026/09/03 08:21:45.686997 Scheduler: channel=0 (Đèn Cổng Trước) -> false
+
+2026/09/03 08:21:45.824931 Scheduler: channel=1 (Chiếu sáng KV1) -> false
+
+2026/09/03 08:21:45.962969 Scheduler: channel=2 (Chiếu sáng KV2 ) -> false
+
+2026/09/03 08:21:46.100981 Scheduler: channel=3 (Chiếu sáng KV3) -> false
+
+2026/09/03 08:21:46.238915 Scheduler: channel=4 (Bơm Phun Sương) -> false
+
+2026/09/03 08:21:46.377022 Scheduler: channel=5 (Bơm Tưới KV1) -> false
+
+2026/09/03 08:21:46.514967 Scheduler: channel=6 (Bơm Tưới KV2) -> false
+
+2026/09/03 08:21:46.652974 Scheduler: channel=7 (Bơm Tưới KV3) -> false
+
+Log vẫn hiển thị mốc giờ 08:21:45 (giờ UTC, chậm 7 tiếng so với thực tế). Điều này xảy ra do hình ảnh Docker base alpine mặc định không có dữ liệu múi giờ (tzdata), nên việc truyền biến -e TZ=Asia/Ho_Chi_Minh chưa đủ để Alpine đổi múi giờ.
+
+Ngoài ra, ứng dụng Go khi dùng time.Local trong Alpine Linux cũng bắt buộc phải có gói tzdata để đọc đúng múi giờ Việt Nam.
+
+Cách khắc phục dứt điểm (Chỉnh sửa Dockerfile)
+Bạn cần cài thêm gói tzdata và cấu hình múi giờ ngay từ trong Dockerfile.
+
+Bước 1: Mở file Dockerfile trên Pi và chỉnh sửa
+Bash
+nano Dockerfile
+Thêm gói tzdata và đặt múi giờ ở Stage 2 (Runtime Stage) như sau:
+
+Dockerfile
+# STAGE 1: Build
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o app .
+
+# STAGE 2: Run
+FROM alpine:latest
+
+# Cài đặt chứng chỉ CA và gói tzdata để hỗ trợ Múi giờ
+RUN apk --no-cache add ca-certificates tzdata
+
+# Cấu hình Múi giờ Việt Nam trực tiếp cho Alpine
+ENV TZ=Asia/Ho_Chi_Minh
+RUN cp /usr/share/zoneinfo/Asia/Ho_Chi_Minh /etc/localtime && echo "Asia/Ho_Chi_Minh" > /etc/timezone
+
+WORKDIR /root/
+
+COPY --from=builder /app/app .
+
+EXPOSE 6060
+
+CMD ["./app"]
+(Nhấn Ctrl + O để lưu, Enter, và Ctrl + X để thoát).
+
+Bước 2: Build lại Image và khởi chạy Container
+Dừng và xóa container cũ:
+
+Bash
+docker stop running-go-app && docker rm running-go-app
+Build lại Image:
+
+Bash
+docker build -t ras-modeth-wave .
+Chạy lại Container:
+
+Bash
+docker run -d \
+  -p 6060:6060 \
+  --env-file .env \
+  -v $(pwd)/schedules.json:/root/schedules.json \
+  --restart always \
+  --name running-go-app \
+  ras-modeth-wave
+Kiểm tra lại log
+Chạy lệnh kiểm tra log:
+
+Bash
+docker logs --tail 20 running-go-app
+Lúc này, thời gian trong log sẽ chuyển chuẩn xác về mốc 15:26:xx (giờ Việt Nam). Hệ thống Scheduler sẽ tự động chạy chính xác theo đúng khung giờ bạn đã cài đặt!
+
+pi@raspberrypi:~/Ras_Modeth_Wave $ docker logs --tail 20 running-go-app
+
+2026/09/03 08:37:30.318852 Starting industrial control server
+
+2026/09/03 08:37:30.319023 HTTP=:6060 | Modbus=192.168.1.200:502 | UnitID=1 | Poll=1s | ScheduleFile=schedules.json
+
+2026/09/03 08:37:30.319308 Đã nạp 0 lịch hẹn giờ từ schedules.json
+
+2026/09/03 08:37:30.321078 Modbus connected: 192.168.1.200:502, UnitID=1
+
+2026/09/03 08:37:30.321542 HTTP server listening on :6060
+
+2026/09/03 08:37:30.470387 Scheduler: channel=0 (Đèn Cổng Trước) -> false
+
+2026/09/03 08:37:30.612270 Scheduler: channel=1 (Chiếu sáng KV1) -> false
+
+2026/09/03 08:37:30.754295 Scheduler: channel=2 (Chiếu sáng KV2 ) -> false
+
+2026/09/03 08:37:30.897263 Scheduler: channel=3 (Chiếu sáng KV3) -> false
+
+2026/09/03 08:37:31.040303 Scheduler: channel=4 (Bơm Phun Sương) -> false
+
+2026/09/03 08:37:31.183304 Scheduler: channel=5 (Bơm Tưới KV1) -> false
+
+2026/09/03 08:37:31.326288 Scheduler: channel=6 (Bơm Tưới KV2) -> false
+
+2026/09/03 08:37:31.469267 Scheduler: channel=7 (Bơm Tưới KV3) -> false
+
+Nhìn vào log mới nhất, hệ thống đã để lộ rõ 2 vấn đề:
+
+Múi giờ vẫn bị trễ: Log ghi 08:37:30 thay vì 15:37:30 (đang trễ 7 tiếng).
+
+Lịch hẹn giờ bị trống: Dòng Đã nạp 0 lịch hẹn giờ từ schedules.json xác nhận app đang không đọc được dữ liệu hẹn giờ nào.
+
+Nguyên nhân & Cách khắc phục dứt điểm
+Về múi giờ: Môi trường Go trong Docker cần được chỉ định rõ biến môi trường múi giờ hoặc nạp đúng file dữ liệu zoneinfo.
+
+Về file schedules.json: Code Go tìm file ở thư mục gốc làm việc (.), nhưng khi mount -v $(pwd)/schedules.json:/root/schedules.json có thể app lại chạy ở thư mục khác (/ hoặc /app), khiến app nạp một file rỗng mới tạo.
+
+Thực hiện các bước sau để xử lý dứt điểm:
+
+Bước 1: Sửa lại Dockerfile
+Mở file Dockerfile (nano Dockerfile) và dán nội dung tối ưu bên dưới:
+
+Dockerfile
+# STAGE 1: Build
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o app .
+
+# STAGE 2: Run
+FROM alpine:latest
+
+# Cài đặt tzdata để nạp dữ liệu múi giờ
+RUN apk --no-cache add ca-certificates tzdata
+
+# Đặt múi giờ hệ thống
+ENV TZ=Asia/Ho_Chi_Minh
+RUN cp /usr/share/zoneinfo/Asia/Ho_Chi_Minh /etc/localtime && echo "Asia/Ho_Chi_Minh" > /etc/timezone
+
+# Tạo và cố định thư mục làm việc là /app
+WORKDIR /app
+
+COPY --from=builder /app/app .
+
+EXPOSE 6060
+
+CMD ["./app"]
+Bước 2: Build lại Image và khởi chạy đúng đường dẫn
+Dừng và xóa container cũ:
+
+Bash
+docker stop running-go-app && docker rm running-go-app
+Build lại image:
+
+Bash
+docker build -t ras-modeth-wave .
+Chạy container và mount đúng thư mục /app/schedules.json:
+
+Bash
+docker run -d \
+  -p 6060:6060 \
+  -e TZ=Asia/Ho_Chi_Minh \
+  --env-file .env \
+  -v $(pwd)/schedules.json:/app/schedules.json \
+  --restart always \
+  --name running-go-app \
+  ras-modeth-wave
+Kiểm tra lại kết quả
+Gõ lệnh kiểm tra log:
+
+Bash
+docker logs --tail 20 running-go-app
+Bây giờ bạn sẽ thấy:
+
+Mốc thời gian hiển thị chính xác là 15:37:xx (giờ Việt Nam).
+
+Nếu bạn đã thêm lịch qua Web hoặc thêm vào file schedules.json, ứng dụng sẽ báo số lượng lịch nạp thành công (ví dụ: Đã nạp X lịch hẹn giờ...).
+
+kiểm tra giờ raspberry pi
+
+Để kiểm tra giờ thực tế đang chạy trên Raspberry Pi (máy host), bạn sử dụng các lệnh dưới đây trong Terminal:
+
+Các lệnh kiểm tra giờ trên Raspberry Pi
+Lệnh 1: Kiểm tra tổng quan (Nhanh & đầy đủ nhất)
+Bash
+timedatectl
+Lệnh này hiển thị chi tiết 4 thông số:
+
+Local time: Giờ hiện tại trên Raspberry Pi.
+
+Universal time: Giờ chuẩn UTC.
+
+Time zone: Múi giờ đang thiết lập (ví dụ: Asia/Ho_Chi_Minh, +0700).
+
+NTP service: Báo active nếu Pi đang tự đồng bộ giờ qua Internet.
+
+Lệnh 2: Xem nhanh 1 dòng giờ hệ thống
+Bash
+date
+Xử lý nếu giờ trên Raspberry Pi bị sai
+Nếu Raspberry Pi hiển thị sai múi giờ hoặc sai giờ thực tế:
+
+1. Đổi múi giờ Pi về Việt Nam (UTC+7):
+
+Bash
+sudo timedatectl set-timezone Asia/Ho_Chi_Minh
+2. Bật tự động đồng bộ giờ qua Internet (NTP):
+
+Bash
+sudo timedatectl set-ntp true
+Lưu ý mối liên hệ với Docker
+Nếu giờ trên Raspberry Pi (máy host) bị sai, mọi Docker Container chạy trên nó cũng sẽ bị sai giờ theo, bất kể bạn cấu hình TZ=Asia/Ho_Chi_Minh trong Docker.
+
+Hãy đảm bảo lệnh date trên Pi trả về đúng 15:38:xx ICT (giờ Việt Nam thực tế) trước khi kiểm tra lại log của Docker.
+
+pi@raspberrypi:~ $ timedatectl
+
+               Local time: Thu 2026-09-03 09:38:44 BST
+
+           Universal time: Thu 2026-09-03 08:38:44 UTC
+
+                 RTC time: n/a
+
+                Time zone: Europe/London (BST, +0100)
+
+System clock synchronized: yes
+
+              NTP service: active
+
+          RTC in local TZ: no
+
+Kết quả timedatectl đã chỉ ra nguyên nhân gốc rễ: Múi giờ của hệ điều hành Raspberry Pi đang đặt là Europe/London (BST, +0100) thay vì giờ Việt Nam.
+
+Vì máy host bị lệch múi giờ, tất cả các Docker container chạy trên đó cũng bị lệch theo.
+
+Các bước sửa dứt điểm từ Máy Host đến Docker
+Bước 1: Đổi múi giờ Raspberry Pi về Việt Nam (UTC+7)
+Chạy lệnh này trên Terminal của Pi:
+
+Bash
+sudo timedatectl set-timezone Asia/Ho_Chi_Minh
+Kiểm tra lại bằng lệnh date, bạn sẽ thấy thời gian chuyển về chuẩn 15:38:xx ICT.
+
+Bước 2: Khởi động lại Docker Container
+Sau khi sửa múi giờ máy host, bạn chỉ cần khởi động lại container để ứng dụng Go cập nhật múi giờ mới từ Pi:
+
+Bash
+docker restart running-go-app
+Bước 3: Kiểm tra lại log của ứng dụng
+Chạy lệnh xem log:
+
+Bash
+docker logs --tail 20 running-go-app
+Lúc này, thời gian trong log sẽ hiển thị chuẩn xác mốc 15:xx:xx (giờ Việt Nam). Tính năng hẹn giờ bật/tắt rơ-le tự động sẽ hoạt động chính xác theo đúng khung giờ bạn cài đặt!
+
+
+
+
+Gemini is AI and can make mistakes.
+
 Bạn có muốn thử kiểm tra kết nối từ Pi tới thiết bị Relay không?
