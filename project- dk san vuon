@@ -788,3 +788,10 @@ Lúc này, thời gian trong log sẽ hiển thị chuẩn xác mốc 15:xx:xx (
 Gemini is AI and can make mistakes.
 
 Bạn có muốn thử kiểm tra kết nối từ Pi tới thiết bị Relay không?
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+  101  docker stop running-go-app
+  102  docker rm running-go-app
+  103  docker build -t ras-modeth-wave .
+  104  docker run -d >   -p 6060:6060 >   -e TZ=Asia/Ho_Chi_Minh >   --env-file .env >   -v $(pwd)/schedules.json:/app/schedules.json >   --restart always >   --name running-go-app >   ras-modeth-wave
+  105  docker run -d   -p 6060:6060   -e TZ=Asia/Ho_Chi_Minh   --env-file .env   -v $(pwd)/schedules.json:/app/schedules.json   --restart always   --name running-go-app   ras-modeth-wave
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
